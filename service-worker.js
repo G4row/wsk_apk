@@ -7,7 +7,7 @@
      from the phone (they never change at a fixed version URL).
    When you add a NEW page or file, add it to PRECACHE and raise VERSION.
    ===================================================================== */
-const VERSION = 'wsk-v1';
+const VERSION = 'wsk-v2';
 const CDN_CACHE = 'wsk-cdn-v1';
 
 const PRECACHE = [
@@ -18,6 +18,7 @@ const PRECACHE = [
   './abc.html',
   './inventory.html',
   './locations.html',
+  './layout.html',
   './qr.html',
   './mod.html',
   './stopwatch.html',

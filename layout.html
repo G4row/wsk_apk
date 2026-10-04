@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#020602">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WSK">
+<title>Warehouse Layout · Warehouse Swiss Knife</title>
+<link rel="stylesheet" href="style.css">
+<script src="xlsx.full.min.js"></script>
+<style>
+  /* ---------- search ---------- */
+  .search-row { display: flex; gap: 10px; }
+  .search-row input { flex: 1 1 auto; min-width: 0; }
+  .search-row .btn { flex: 0 0 auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    min-width: 40px; min-height: 40px; padding: 0 8px;
+    background: transparent; color: var(--text);
+    border: 1px solid var(--line); font-family: var(--mono); font-size: 14px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--white); background: var(--hover); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
+  .seg { display: inline-flex; border: 1px solid var(--line); }
+  .seg .chip { border: 0; }
+  .seg .chip + .chip { border-left: 1px solid var(--line); }
+  .sub-label { font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+
+  /* ---------- counters ---------- */
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  .stat { border: 1px solid var(--line); padding: 8px 14px; min-width: 110px; }
+  .stat b { display: block; font-family: var(--display); font-weight: 400; font-size: 34px; line-height: 1; color: var(--accent); }
+  .stat span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .stat.dim b { color: var(--white); }
+
+  /* ---------- rack (front view) ---------- */
+  .side-title { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--soft); margin: 18px 0 6px; }
+  .rack-scroll { overflow-x: auto; border: 1px solid var(--line-dim); background: #010401; }
+  table.rack { border-collapse: separate; border-spacing: 0; width: auto; font-size: 11px; }
+  table.rack th, table.rack td { border: 0; padding: 0; background: transparent; }
+  table.rack thead th.sec {
+    text-align: center; color: var(--accent); font-weight: 500; letter-spacing: 0;
+    padding: 6px 0 4px; border-left: 4px solid #010401; border-bottom: 1px solid var(--line);
+    text-transform: none; font-size: 11px; background: #010401;
+  }
+  table.rack th.lvl, table.rack thead th.corner {
+    position: sticky; left: 0; z-index: 2;
+    min-width: 46px; padding: 0 8px; text-align: right;
+    background: var(--panel-2); color: var(--soft); font-weight: 500; font-size: 12px;
+    border-right: 1px solid var(--line);
+  }
+  table.rack th.lvl small { color: var(--muted); font-size: 9px; letter-spacing: .08em; display: block; line-height: 1; }
+  table.rack td.cell {
+    width: 14px; min-width: 14px; height: 26px;
+    border: 1px solid var(--line-dim);
+  }
+  table.rack td.cell.a { border-left: 5px solid #010401; }
+  table.rack td.cell.occ { background: var(--accent); border-color: #013d10; cursor: pointer; }
+  table.rack td.cell.occ:hover { background: var(--white); }
+  table.rack td.cell.blocked { background: repeating-linear-gradient(45deg, #1f7a3a 0 3px, transparent 3px 6px); }
+  table.rack td.cell.sel { outline: 2px solid var(--white); outline-offset: -2px; }
+  table.rack td.cell:focus-visible { outline: 2px solid var(--white); outline-offset: -2px; }
+  table.rack tr.ground td.cell { border-bottom: 3px solid var(--soft); }
+  table.rack td.cnt, table.rack thead th.cnt {
+    min-width: 64px; padding: 0 10px; text-align: right; white-space: nowrap;
+    color: var(--white); font-size: 12px; border-left: 1px solid var(--line);
+    font-weight: 500; letter-spacing: 0; text-transform: none; background: var(--panel-2);
+  }
+  table.rack thead th.cnt { color: var(--muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ---------- floor plan (top view) ---------- */
+  .plan-scroll { overflow-x: auto; padding: 4px 0 8px; }
+  .plan { display: flex; gap: 10px; align-items: flex-start; width: max-content; margin: 0 auto; }
+  .aisle { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .aisle-h { font-size: 12px; color: var(--accent); font-weight: 700; line-height: 1; }
+  .aisle-grid { display: grid; grid-template-columns: 12px 12px; column-gap: 5px; row-gap: 2px; position: relative; }
+  .pc { width: 12px; height: 12px; border: 1px solid var(--line-dim); }
+  .pc.stock { background: #0b3a19; border-color: #0f4d22; }
+  .pc.hit { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px rgba(0,255,65,.7); cursor: pointer; }
+  .pc.hit:hover, .pc.hit:focus-visible { background: var(--white); outline: none; }
+  .pc.sel { outline: 2px solid var(--white); outline-offset: 1px; }
+  .aisle-dir { display: grid; grid-template-columns: 12px 12px; column-gap: 5px; font-size: 9px; color: var(--muted); text-align: center; line-height: 1; }
+  .entrance { text-align: center; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--soft); margin-top: 12px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border: 1px solid var(--line-dim); }
+  .legend i.occ { background: var(--accent); border-color: var(--accent); }
+  .legend i.stock { background: #0b3a19; border-color: #0f4d22; }
+
+  .warn { border: 1px dashed var(--warn); color: var(--warn); padding: 8px 12px; font-size: 13px; margin-top: 12px; }
+  .warn:empty { display: none; }
+</style>
+<script>
+window.PAGE_I18N = {
+  en: {
+    doc_title: 'Warehouse Layout', page_title: 'Warehouse layout',
+    page_sub: 'Load stock from Excel, then choose a rack or a product to see where everything is.',
+    excel_title: 'Import stock from Excel',
+    excel_desc: 'Same file as Inventory search: A = location, B = product, C = pallet ID, D = quantity. Location A013D = rack A, section 01, level 3, position D.',
+    btn_demo: 'Load demo data', demo_loaded: 'Demo data loaded: {n} occupied locations.',
+    loaded: '{n} occupied locations loaded.', invalid_locs: '{n} rows were skipped because the location is not in the A013D format.',
+    search_title: 'Rack or product', lbl_search: 'Type a rack letter (A–S) or a product', ph_search: 'e.g. C or PRD-1042', btn_show: 'Show',
+    lbl_racks: 'Racks', lbl_height: 'Rack height', h_3: '3', h_6: '6', h_hint: 'Rack view shows levels 0–{h}.',
+    need_data: 'Load an Excel file or the demo data first.',
+    not_found: 'No rack or product matches “{q}”.', multi: '{n} products contain “{q}”. Choose one from the list.',
+    rack_title: 'Rack {r}', side_left: 'Left side · sections 00–21 · going in', side_right: 'Right side · sections 22–43 · coming out',
+    st_positions: 'Positions', st_occupied: 'Occupied', st_empty: 'Empty',
+    col_empty: 'Empty', ground: 'ground',
+    hidden_above: '{n} occupied locations above level {h} are not shown. Choose height 6 to see them.',
+    rack_hint: 'Each small cell is one position (A–D). Tap a filled cell to see what is stored there.',
+    plan_title: 'Floor plan · {p}', plan_hint: 'Each square is one section, all levels together. Tap a highlighted section to see its locations.',
+    plan_summary: '{locs} locations in {secs} sections · total quantity {qty}',
+    legend_hit: 'This product', legend_stock: 'Other stock', legend_empty: 'Empty', legend_occ: 'Occupied',
+    entrance: 'Entrance = exit',
+    details_title: 'Details', col_loc: 'Location', col_level: 'Level', col_pos: 'Pos.', col_prod: 'Product', col_pallet: 'Pallet ID', col_qty: 'Qty',
+    empty_loc: 'This location is empty.', section_of: 'Rack {r} · section {s}'
+  },
+  nl: {
+    doc_title: 'Magazijnindeling', page_title: 'Magazijnindeling',
+    page_sub: 'Laad de voorraad uit Excel en kies een stelling of product om te zien waar alles staat.',
+    excel_title: 'Voorraad importeren uit Excel',
+    excel_desc: 'Hetzelfde bestand als bij Voorraad zoeken: A = locatie, B = product, C = pallet-ID, D = aantal. Locatie A013D = stelling A, sectie 01, niveau 3, positie D.',
+    btn_demo: 'Demogegevens laden', demo_loaded: 'Demogegevens geladen: {n} bezette locaties.',
+    loaded: '{n} bezette locaties geladen.', invalid_locs: '{n} regels overgeslagen omdat de locatie niet het formaat A013D heeft.',
+    search_title: 'Stelling of product', lbl_search: 'Typ een stellingletter (A–S) of een product', ph_search: 'bijv. C of PRD-1042', btn_show: 'Tonen',
+    lbl_racks: 'Stellingen', lbl_height: 'Stellinghoogte', h_3: '3', h_6: '6', h_hint: 'Stellingweergave toont niveau 0–{h}.',
+    need_data: 'Laad eerst een Excel-bestand of de demogegevens.',
+    not_found: 'Geen stelling of product gevonden voor “{q}”.', multi: '{n} producten bevatten “{q}”. Kies er een uit de lijst.',
+    rack_title: 'Stelling {r}', side_left: 'Linkerkant · secties 00–21 · heen', side_right: 'Rechterkant · secties 22–43 · terug',
+    st_positions: 'Posities', st_occupied: 'Bezet', st_empty: 'Leeg',
+    col_empty: 'Leeg', ground: 'vloer',
+    hidden_above: '{n} bezette locaties boven niveau {h} worden niet getoond. Kies hoogte 6 om ze te zien.',
+    rack_hint: 'Elk klein vak is één positie (A–D). Tik op een gevuld vak om te zien wat er staat.',
+    plan_title: 'Plattegrond · {p}', plan_hint: 'Elk vierkant is één sectie, alle niveaus samen. Tik op een gemarkeerde sectie voor de locaties.',
+    plan_summary: '{locs} locaties in {secs} secties · totaal aantal {qty}',
+    legend_hit: 'Dit product', legend_stock: 'Andere voorraad', legend_empty: 'Leeg', legend_occ: 'Bezet',
+    entrance: 'Ingang = uitgang',
+    details_title: 'Details', col_loc: 'Locatie', col_level: 'Niveau', col_pos: 'Pos.', col_prod: 'Product', col_pallet: 'Pallet-ID', col_qty: 'Aantal',
+    empty_loc: 'Deze locatie is leeg.', section_of: 'Stelling {r} · sectie {s}'
+  },
+  hr: {
+    doc_title: 'Raspored skladišta', page_title: 'Raspored skladišta',
+    page_sub: 'Učitajte zalihe iz Excela, zatim odaberite rack ili proizvod i pogledajte gdje se sve nalazi.',
+    excel_title: 'Uvoz zaliha iz Excela',
+    excel_desc: 'Ista datoteka kao u Pretrazi inventara: A = lokacija, B = proizvod, C = ID palete, D = količina. Lokacija A013D = rack A, sekcija 01, nivo 3, pozicija D.',
+    btn_demo: 'Učitaj demo podatke', demo_loaded: 'Demo podaci učitani: {n} zauzetih lokacija.',
+    loaded: 'Učitano {n} zauzetih lokacija.', invalid_locs: 'Preskočeno {n} redaka jer lokacija nije u formatu A013D.',
+    search_title: 'Rack ili proizvod', lbl_search: 'Upišite slovo racka (A–S) ili proizvod', ph_search: 'npr. C ili PRD-1042', btn_show: 'Prikaži',
+    lbl_racks: 'Rackovi', lbl_height: 'Visina racka', h_3: '3', h_6: '6', h_hint: 'Prikaz racka prikazuje nivoe 0–{h}.',
+    need_data: 'Najprije učitajte Excel datoteku ili demo podatke.',
+    not_found: 'Nema racka ni proizvoda za „{q}”.', multi: '{n} proizvoda sadrži „{q}”. Odaberite jedan s popisa.',
+    rack_title: 'Rack {r}', side_left: 'Lijeva strana · sekcije 00–21 · ulaz', side_right: 'Desna strana · sekcije 22–43 · povratak',
+    st_positions: 'Pozicije', st_occupied: 'Zauzeto', st_empty: 'Prazno',
+    col_empty: 'Prazno', ground: 'pod',
+    hidden_above: '{n} zauzetih lokacija iznad nivoa {h} nije prikazano. Odaberite visinu 6 da ih vidite.',
+    rack_hint: 'Svaka mala ćelija je jedna pozicija (A–D). Dodirnite ispunjenu ćeliju da vidite što je na njoj.',
+    plan_title: 'Tlocrt · {p}', plan_hint: 'Svaki kvadrat je jedna sekcija, svi nivoi zajedno. Dodirnite označenu sekciju za popis lokacija.',
+    plan_summary: '{locs} lokacija u {secs} sekcija · ukupna količina {qty}',
+    legend_hit: 'Ovaj proizvod', legend_stock: 'Ostale zalihe', legend_empty: 'Prazno', legend_occ: 'Zauzeto',
+    entrance: 'Ulaz = izlaz',
+    details_title: 'Detalji', col_loc: 'Lokacija', col_level: 'Nivo', col_pos: 'Poz.', col_prod: 'Proizvod', col_pallet: 'ID palete', col_qty: 'Količina',
+    empty_loc: 'Ova lokacija je prazna.', section_of: 'Rack {r} · sekcija {s}'
+  }
+};
+</script>
+<script src="i18n.js"></script>
+</head>
+<body data-page="layout">
+<header class="app-header">
+  <div class="app-header-inner">
+    <a class="brand" href="index.html"><span class="brand-mark">W+</span><span class="brand-text"><strong>Warehouse Swiss Knife</strong><span data-i18n="brand_sub">Warehouse operations toolkit</span></span></a>
+    <div class="lang-switcher" data-lang-switcher></div>
+  </div>
+</header>
+
+<section class="page-hero">
+  <div class="kicker">&gt; wsk://inventory/layout</div>
+  <h1 data-i18n="page_title">Warehouse layout</h1>
+  <p data-i18n="page_sub"></p>
+</section>
+
+<main class="container">
+  <section class="card">
+    <h2 data-i18n="excel_title">Import stock from Excel</h2>
+    <div class="card-body">
+      <p class="hint" data-i18n="excel_desc"></p>
+      <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
+      <div class="btn-group" style="margin-top:10px">
+        <button type="button" class="btn btn-secondary" id="btnDemo" data-i18n="btn_demo">Load demo data</button>
+      </div>
+      <div class="status" id="loadStatus" aria-live="polite"></div>
+      <div class="status" id="invalidStatus" style="color:var(--warn)"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="search_title">Rack or product</h2>
+    <div class="card-body">
+      <label for="query" data-i18n="lbl_search">Type a rack letter or a product</label>
+      <div class="search-row">
+        <input type="text" id="query" list="queryOptions" autocomplete="off" autocapitalize="characters" data-i18n-placeholder="ph_search">
+        <button type="button" class="btn btn-primary" id="btnShow" data-i18n="btn_show">Show</button>
+      </div>
+      <datalist id="queryOptions"></datalist>
+
+      <div class="sub-label" data-i18n="lbl_racks">Racks</div>
+      <div class="chips" id="rackChips"></div>
+
+      <div class="sub-label" data-i18n="lbl_height">Rack height</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+        <div class="seg" role="group" id="heightSeg">
+          <button type="button" class="chip" data-h="3" aria-pressed="true" data-i18n="h_3">3</button>
+          <button type="button" class="chip" data-h="6" aria-pressed="false" data-i18n="h_6">6</button>
+        </div>
+        <span class="muted" id="heightHint" style="font-size:12px"></span>
+      </div>
+      <div class="status" id="searchStatus" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="card" id="viewCard" hidden>
+    <h2 id="viewTitle"></h2>
+    <div class="card-body" id="viewBody"></div>
+  </section>
+
+  <section class="card" id="detailCard" hidden>
+    <h2><span data-i18n="details_title">Details</span> <span id="detailTitle" style="color:var(--white)"></span></h2>
+    <div id="detailBody"></div>
+  </section>
+</main>
+
+<nav class="nav-bar" data-nav></nav>
+
+<script>
+/* =====================================================================
+   Warehouse layout
+   Location code: A013D = rack A · section 01 · level 3 · position D
+   A 6-character code (e.g. BA013D) is read without its first letter.
+   ===================================================================== */
+const RACKS = 'ABCDEFGHIJKLMNOPQRS'.split('');
+const SECTIONS = 44;                 // 00–43
+const LEFT = [...Array(22).keys()];                  // 00–21, going in
+const RIGHT = [...Array(22).keys()].map(i => i + 22); // 22–43, coming out
+const POSITIONS = ['A', 'B', 'C', 'D'];
+const MAX_LEVEL = 6;                 // database has levels 0–6
+const HEIGHTS = { 3: 3, 6: 6 };      // height choice -> highest level shown (0 = ground)
+
+const $ = (id) => document.getElementById(id);
+const pad2 = (n) => String(n).padStart(2, '0');
+const fmt = (n) => Number(n).toLocaleString({ en: 'en-GB', nl: 'nl-NL', hr: 'hr-HR' }[WSK.getLang()] || undefined);
+
+let locs = new Map();       // 'A013D' -> [{product, pallet, qty}]  (only occupied)
+let products = new Map();   // 'PRD-1' -> [{code, rack, sec, lvl, pos, pallet, qty}]
+let invalidRows = 0;
+let height = 3;
+let view = null;            // {type:'rack', rack} | {type:'product', name}
+let selected = null;        // selected location code or section key
+
+/* ---------- parsing ---------- */
+function parseLoc(raw) {
+  let s = String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (/^[A-Z]{2}\d{3}[A-Z]$/.test(s)) s = s.slice(1);          // ignore the first letter
+  const m = s.match(/^([A-Z])(\d{2})(\d)([A-D])$/);
+  if (!m) return null;
+  const sec = parseInt(m[2], 10), lvl = parseInt(m[3], 10);
+  if (sec >= SECTIONS || lvl > MAX_LEVEL) return null;
+  return { code: s, rack: m[1], sec, lvl, pos: m[4] };
+}
+
+function setData(rows) {
+  locs = new Map(); products = new Map(); invalidRows = 0;
+  rows.forEach(r => {
+    if (!r || !r.length) return;
+    const raw = String(r[0] ?? '').trim();
+    if (!raw) return;
+    const loc = parseLoc(raw);
+    if (!loc) { invalidRows++; return; }
+    const product = String(r[1] ?? '').trim();
+    const pallet = String(r[2] ?? '').trim();
+    const qtyRaw = r[3];
+    const qty = qtyRaw === undefined || qtyRaw === null || String(qtyRaw).trim() === '' ? 0 : (parseFloat(qtyRaw) || 0);
+    if (!product && !pallet && !qty) return;                    // listed but empty
+    if (!locs.has(loc.code)) locs.set(loc.code, []);
+    locs.get(loc.code).push({ product, pallet, qty });
+    if (product) {
+      if (!products.has(product)) products.set(product, []);
+      products.get(product).push({ ...loc, pallet, qty });
+    }
+  });
+  fillOptions();
+  if (invalidRows) WSK.setText($('invalidStatus'), 'invalid_locs', { n: invalidRows });
+  else WSK.setText($('invalidStatus'), null);
+  render();
+}
+
+/* ---------- Excel ---------- */
+$('excelFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  WSK.readWorkbook(file, (wb) => {
+    const rows = WSK.sheetRows(wb, 0).slice(1);
+    setData(rows);
+    WSK.setText($('loadStatus'), 'loaded', { n: locs.size });
+  }, $('loadStatus'));
+});
+
+/* ---------- demo data ---------- */
+$('btnDemo').addEventListener('click', () => {
+  let seed = 42;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  const prods = Array.from({ length: 120 }, (_, i) => 'PRD-' + (1001 + i));
+  const rows = [];
+  RACKS.forEach(r => {
+    for (let s = 0; s < SECTIONS; s++) {
+      // like a real warehouse: one main product per section, a few mixed pallets
+      const main = prods[Math.floor(rnd() * prods.length)];
+      for (let l = 0; l <= MAX_LEVEL; l++) for (const p of POSITIONS) {
+        const fill = l === 0 ? 0.75 : l <= 3 ? 0.55 : 0.3;
+        if (rnd() < fill) {
+          const prod = rnd() < 0.85 ? main : prods[Math.floor(rnd() * prods.length)];
+          rows.push([r + pad2(s) + l + p, prod, 'PAL' + Math.floor(100000 + rnd() * 899999), Math.ceil(rnd() * 48)]);
+        }
+      }
+    }
+  });
+  setData(rows);
+  WSK.setText($('loadStatus'), 'demo_loaded', { n: locs.size });
+});
+
+/* ---------- search ---------- */
+function fillOptions() {
+  const opts = RACKS.map(r => `<option value="${r}">${WSK.esc(WSK.t('rack_title', { r }))}</option>`);
+  [...products.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .forEach(p => opts.push(`<option value="${WSK.esc(p)}"></option>`));
+  $('queryOptions').innerHTML = opts.join('');
+}
+
+function runQuery() {
+  const q = $('query').value.trim();
+  if (!q) return;
+  if (!locs.size && !products.size) { WSK.setText($('searchStatus'), 'need_data'); return; }
+  WSK.setText($('searchStatus'), null);
+
+  const rackMatch = q.match(/^(?:rack|stelling)?\s*([A-S])$/i);
+  if (rackMatch) { show({ type: 'rack', rack: rackMatch[1].toUpperCase() }); return; }
+
+  const lower = q.toLowerCase();
+  const names = [...products.keys()];
+  const exact = names.find(n => n.toLowerCase() === lower);
+  if (exact) { show({ type: 'product', name: exact }); return; }
+  const partial = names.filter(n => n.toLowerCase().includes(lower));
+  if (partial.length === 1) { $('query').value = partial[0]; show({ type: 'product', name: partial[0] }); return; }
+  if (partial.length > 1) WSK.setText($('searchStatus'), 'multi', { n: partial.length, q });
+  else WSK.setText($('searchStatus'), 'not_found', { q });
+}
+
+$('btnShow').addEventListener('click', runQuery);
+$('query').addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+$('query').addEventListener('change', () => {
+  // picking an entry from the dropdown triggers 'change' — show it straight away
+  const v = $('query').value.trim();
+  if (/^[A-S]$/i.test(v) || products.has(v)) runQuery();
+});
+
+/* rack chips */
+$('rackChips').innerHTML = RACKS.map(r => `<button type="button" class="chip" data-rack="${r}" aria-pressed="false">${r}</button>`).join('');
+$('rackChips').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rack]');
+  if (!b) return;
+  if (!locs.size && !products.size) { WSK.setText($('searchStatus'), 'need_data'); return; }
+  $('query').value = b.dataset.rack;
+  WSK.setText($('searchStatus'), null);
+  show({ type: 'rack', rack: b.dataset.rack });
+});
+
+/* height */
+$('heightSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-h]');
+  if (!b) return;
+  height = HEIGHTS[b.dataset.h];
+  document.querySelectorAll('#heightSeg [data-h]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  updateHeightHint();
+  if (view && view.type === 'rack') render();
+});
+function updateHeightHint() { WSK.setText($('heightHint'), 'h_hint', { h: height }); }
+
+function show(v) {
+  view = v; selected = null;
+  document.querySelectorAll('#rackChips [data-rack]').forEach(b =>
+    b.setAttribute('aria-pressed', String(v.type === 'rack' && b.dataset.rack === v.rack)));
+  render();
+  $('viewCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  $('detailCard').hidden = true;
+  if (!view) { $('viewCard').hidden = true; return; }
+  $('viewCard').hidden = false;
+  if (view.type === 'rack') renderRack(view.rack);
+  else renderPlan(view.name);
+  if (selected) renderDetails();
+}
+
+function statBox(n, key, dim) {
+  return `<div class="stat${dim ? ' dim' : ''}"><b>${n}</b><span>${WSK.esc(WSK.t(key))}</span></div>`;
+}
+
+function renderRack(rack) {
+  WSK.setText($('viewTitle'), 'rack_title', { r: rack });
+  const levels = [];
+  for (let l = height; l >= 0; l--) levels.push(l);
+  let occTotal = 0;
+
+  const side = (sections, titleKey) => {
+    let head = `<tr><th class="corner"></th>${sections.map(s => `<th class="sec" colspan="4">${pad2(s)}</th>`).join('')}<th class="cnt">${WSK.esc(WSK.t('col_empty'))}</th></tr>`;
+    let body = levels.map(l => {
+      let empty = 0;
+      const cells = sections.map(s => POSITIONS.map(p => {
+        const code = rack + pad2(s) + l + p;
+        const occ = locs.has(code);
+        if (occ) occTotal++; else empty++;
+        const cls = 'cell' + (p === 'A' ? ' a' : '') + (occ ? ' occ' : '') + (selected === code ? ' sel' : '');
+        return `<td class="${cls}" data-loc="${code}" title="${code}"${occ ? ' tabindex="0"' : ''}></td>`;
+      }).join('')).join('');
+      const label = l === 0 ? `0<small>${WSK.esc(WSK.t('ground'))}</small>` : l;
+      return `<tr${l === 0 ? ' class="ground"' : ''}><th class="lvl" scope="row">${label}</th>${cells}<td class="cnt">${empty}</td></tr>`;
+    }).join('');
+    return `<div class="side-title">${WSK.esc(WSK.t(titleKey))}</div>
+      <div class="rack-scroll"><table class="rack"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  };
+
+  const leftHtml = side(LEFT, 'side_left');
+  const rightHtml = side(RIGHT, 'side_right');
+  const total = SECTIONS * POSITIONS.length * (height + 1);
+
+  let hidden = 0;
+  locs.forEach((_, code) => { if (code[0] === rack && parseInt(code[3], 10) > height) hidden++; });
+
+  $('viewBody').innerHTML = `
+    <div class="stats">${statBox(total, 'st_positions', true)}${statBox(occTotal, 'st_occupied')}${statBox(total - occTotal, 'st_empty', true)}</div>
+    <p class="hint">${WSK.esc(WSK.t('rack_hint'))}</p>
+    ${leftHtml}${rightHtml}
+    <div class="legend"><span><i class="occ"></i>${WSK.esc(WSK.t('legend_occ'))}</span><span><i></i>${WSK.esc(WSK.t('legend_empty'))}</span></div>
+    <div class="warn">${hidden ? WSK.esc(WSK.t('hidden_above', { n: hidden, h: height })) : ''}</div>`;
+}
+
+function renderPlan(name) {
+  WSK.setText($('viewTitle'), 'plan_title', { p: name });
+  const items = products.get(name) || [];
+  const hits = new Map();
+  items.forEach(it => {
+    const key = it.rack + pad2(it.sec);
+    if (!hits.has(key)) hits.set(key, []);
+    hits.get(key).push(it);
+  });
+  const stock = new Set();
+  locs.forEach((_, code) => stock.add(code.slice(0, 3)));
+  const qty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
+
+  const cell = (rack, s) => {
+    const key = rack + pad2(s);
+    if (hits.has(key)) {
+      return `<div class="pc hit${selected === key ? ' sel' : ''}" data-sec="${key}" tabindex="0" role="button" title="${key} · ${hits.get(key).length}"></div>`;
+    }
+    return `<div class="pc${stock.has(key) ? ' stock' : ''}" title="${key}"></div>`;
+  };
+
+  const aisles = RACKS.map(r => {
+    let grid = '';
+    for (let row = 0; row < 22; row++) grid += cell(r, 21 - row) + cell(r, 22 + row);   // far end at the top
+    return `<div class="aisle">
+      <div class="aisle-h">${r}</div>
+      <div class="aisle-dir"><span>21</span><span>22</span></div>
+      <div class="aisle-grid">${grid}</div>
+      <div class="aisle-dir"><span>00</span><span>43</span></div>
+      <div class="aisle-dir"><span>↑</span><span>↓</span></div>
+    </div>`;
+  }).join('');
+
+  $('viewBody').innerHTML = `
+    <p class="hint">${WSK.esc(WSK.t('plan_summary', { locs: items.length, secs: hits.size, qty: fmt(qty) }))}</p>
+    <p class="hint">${WSK.esc(WSK.t('plan_hint'))}</p>
+    <div class="plan-scroll"><div class="plan">${aisles}</div><div class="entrance">▲ ${WSK.esc(WSK.t('entrance'))} ▼</div></div>
+    <div class="legend">
+      <span><i class="occ"></i>${WSK.esc(WSK.t('legend_hit'))}</span>
+      <span><i class="stock"></i>${WSK.esc(WSK.t('legend_stock'))}</span>
+      <span><i></i>${WSK.esc(WSK.t('legend_empty'))}</span>
+    </div>`;
+}
+
+/* ---------- details ---------- */
+$('viewBody').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-loc].occ, [data-sec]');
+  if (!c) return;
+  selected = c.dataset.loc || c.dataset.sec;
+  document.querySelectorAll('#viewBody .sel').forEach(x => x.classList.remove('sel'));
+  c.classList.add('sel');
+  renderDetails();
+  $('detailCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('viewBody').addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-loc].occ, [data-sec]')) { e.preventDefault(); e.target.click(); }
+});
+
+function renderDetails() {
+  $('detailCard').hidden = false;
+  const th = (k) => `<th>${WSK.esc(WSK.t(k))}</th>`;
+  if (view.type === 'rack') {
+    const entries = locs.get(selected) || [];
+    $('detailTitle').textContent = '· ' + selected;
+    $('detailBody').innerHTML = entries.length
+      ? `<div class="table-wrap"><table><thead><tr>${th('col_prod')}${th('col_pallet')}${th('col_qty')}</tr></thead><tbody>
+          ${entries.map(e => `<tr><td><strong>${WSK.esc(e.product || '—')}</strong></td><td><code>${WSK.esc(e.pallet)}</code></td><td class="num">${e.qty}</td></tr>`).join('')}
+        </tbody></table></div>`
+      : `<div class="card-body"><p class="muted">${WSK.esc(WSK.t('empty_loc'))}</p></div>`;
+  } else {
+    const rack = selected[0], sec = selected.slice(1);
+    const items = (products.get(view.name) || []).filter(it => it.rack === rack && pad2(it.sec) === sec)
+      .sort((a, b) => a.lvl - b.lvl || a.pos.localeCompare(b.pos));
+    $('detailTitle').textContent = '· ' + WSK.t('section_of', { r: rack, s: sec });
+    $('detailBody').innerHTML = `<div class="table-wrap"><table><thead><tr>${th('col_loc')}${th('col_level')}${th('col_pos')}${th('col_pallet')}${th('col_qty')}</tr></thead><tbody>
+      ${items.map(it => `<tr><td><span class="loc-tag">${it.code}</span></td><td class="num">${it.lvl}${it.lvl === 0 ? ' · ' + WSK.esc(WSK.t('ground')) : ''}</td><td>${it.pos}</td><td><code>${WSK.esc(it.pallet)}</code></td><td class="num">${it.qty}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  }
+}
+
+/* ---------- language ---------- */
+document.addEventListener('wsk:langchange', () => { fillOptions(); render(); });
+updateHeightHint();
+fillOptions();
+</script>
+</body>
+</html>
